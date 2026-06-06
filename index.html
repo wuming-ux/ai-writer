@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>无名 · 作家型AI</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
+  <style>
+    :root {
+      --bg: #fff; --bg2: #f5f5f5; --chat: #fff;
+      --text: #1a1a1a; --text2: #555; --border: #e0e0e0;
+      --user-bubble: #e8e8e8; --ai-bubble: #f0f0f0; --accent: #000;
+      --radius: 16px; --font: 'Georgia', 'PingFang SC', 'Microsoft YaHei', serif;
+    }
+    .dark { --bg: #111; --bg2: #1a1a1a; --chat: #111; --text: #e0e0e0; --text2: #aaa; --border: #333; --user-bubble: #2a2a2a; --ai-bubble: #222; --accent: #ccc; }
+    .sepia { --bg: #f9f3e8; --bg2: #f3ead8; --chat: #f9f3e8; --text: #4a3b2f; --text2: #7a6a5a; --border: #d6c8b8; --user-bubble: #e8dcc8; --ai-bubble: #f0e5d2; --accent: #5a4a3a; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); height:100vh; display:flex; overflow:hidden; }
+    .sidebar { width:260px; background:var(--bg2); border-right:1px solid var(--border); display:flex; flex-direction:column; z-index:20; transition: transform 0.3s; }
+    .sidebar-header { padding:20px; border-bottom:1px solid var(--border); }
+    .sidebar-header h2 { font-size:1.2rem; }
+    .conv-list { flex:1; overflow-y:auto; padding:12px; }
+    .conv-item { padding:12px; border-radius:12px; cursor:pointer; display:flex; align-items:center; gap:8px; margin-bottom:6px; transition: background 0.15s; }
+    .conv-item:hover { background:rgba(0,0,0,0.05); } .conv-item.active { background:rgba(0,0,0,0.1); }
+    .conv-title { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .del-btn { background:transparent; border:none; color:var(--text2); cursor:pointer; font-size:1rem; opacity:0; transition:0.15s; }
+    .conv-item:hover .del-btn { opacity:1; }
+    .sidebar-footer { padding:16px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:8px; }
+    .main { flex:1; display:flex; flex-direction:column; background:var(--chat); }
+    .chat-header { padding:16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; }
+    .menu-btn { display:none; background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--text); }
+    .ai-name { font-weight:bold; }
+    .msg-container { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:16px; }
+    .empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text2); text-align:center; }
+    .msg-row { display:flex; gap:10px; max-width:90%; }
+    .msg-row.user { align-self:flex-end; flex-direction:row-reverse; }
+    .msg-row.assistant { align-self:flex-start; }
+    .msg-avatar { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent); color:var(--bg); font-size:0.9rem; }
+    .msg-bubble { padding:10px 14px; border-radius:var(--radius); line-height:1.5; word-break:break-word; }
+    .user .msg-bubble { background:var(--user-bubble); border-bottom-right-radius:4px; }
+    .assistant .msg-bubble { background:var(--ai-bubble); border-bottom-left-radius:4px; border:1px solid var(--border); }
+    .msg-bubble img { max-width:160px; border-radius:12px; margin:6px 0; }
+    .msg-meta { display:flex; align-items:center; gap:8px; margin-top:4px; opacity:0; transition:0.15s; }
+    .msg-row:hover .msg-meta { opacity:1; }
+    .msg-meta button { background:transparent; border:1px solid var(--border); color:var(--text2); padding:2px 8px; border-radius:6px; cursor:pointer; font-size:0.65rem; }
+    .input-area { padding:12px 16px; border-top:1px solid var(--border); background:var(--bg2); }
+    .input-row { display:flex; gap:8px; align-items:flex-end; background:var(--bg); border-radius:24px; padding:6px 14px; border:1px solid var(--border); }
+    .input-row textarea { flex:1; background:transparent; border:none; outline:none; color:var(--text); resize:none; font-size:0.9rem; padding:8px 0; max-height:100px; font-family:inherit; }
+    .btn-add { background:transparent; border:none; font-size:1.5rem; cursor:pointer; color:var(--text2); padding:4px; }
+    .btn-send { width:36px; height:36px; border-radius:50%; border:none; background:var(--accent); color:var(--bg); cursor:pointer; display:flex; align-items:center; justify-content:center; }
+    .btn-send:disabled { opacity:0.4; }
+    .img-preview { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+    .img-preview img { width:50px; height:50px; object-fit:cover; border-radius:8px; }
+    .modal { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:100; animation: fadeIn 0.2s; }
+    @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+    .modal-content { background:var(--bg); border-radius:20px; padding:20px; width:90%; max-width:400px; max-height:80vh; overflow-y:auto; border:1px solid var(--border); }
+    .modal-content h3 { margin-bottom:12px; }
+    .modal-content label { display:block; margin:10px 0 4px; font-size:0.8rem; color:var(--text2); }
+    .modal-content input, .modal-content select, .modal-content textarea { width:100%; padding:8px 12px; border-radius:12px; border:1px solid var(--border); background:var(--bg2); color:var(--text); margin-bottom:8px; }
+    .modal-content textarea { resize:vertical; }
+    .btn-group { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
+    .btn { padding:8px 16px; border-radius:20px; border:none; cursor:pointer; background:var(--accent); color:var(--bg); }
+    .btn-outline { background:transparent; border:1px solid var(--border); color:var(--text); }
+    @media (max-width: 768px) {
+      .sidebar { position:fixed; left:0; top:0; bottom:0; transform:translateX(-100%); }
+      .sidebar.open { transform:translateX(0); }
+      .menu-btn { display:block; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h2>📖 <span id="sideName">无名</span></h2>
+      <p style="font-size:0.7rem;color:var(--text2);">作家型AI · 私有</p>
+    </div>
+    <div class="conv-list" id="convList"></div>
+    <div class="sidebar-footer">
+      <button id="btnExport" class="btn-outline">📚 写成书</button>
+      <button id="btnSettings" class="btn-outline">⚙️ 设置</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="chat-header">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <span class="ai-name" id="chatName">无名</span>
+      <span style="flex:1;"></span>
+      <span id="hint" style="font-size:0.7rem;color:var(--text2);"></span>
+    </div>
+    <div class="msg-container" id="msgContainer">
+      <div class="empty" id="emptyState">
+        <span style="font-size:2.5rem;">✍️</span>
+        <h3>与“无名”对话</h3>
+        <p>他能学习你的语气，将对话写成书。</p>
+      </div>
+    </div>
+    <div class="input-area">
+      <div class="input-row">
+        <label for="imgUpload" class="btn-add">＋</label>
+        <input type="file" id="imgUpload" accept="image/*" style="display:none;" multiple>
+        <textarea id="userInput" rows="1" placeholder="说点什么... (Enter发送)"></textarea>
+        <button id="btnSend" class="btn-send" disabled>➤</button>
+      </div>
+      <div class="img-preview" id="imgPreview"></div>
+    </div>
+  </div>
+
+  <!-- 设置弹窗 -->
+  <div class="modal" id="settingsModal" style="display:none;">
+    <div class="modal-content">
+      <h3>⚙️ 设置</h3>
+      <label>API 地址（默认DeepSeek）</label>
+      <input type="text" id="apiUrl" placeholder="https://api.deepseek.com/v1/chat/completions">
+      <label>API 密钥</label>
+      <input type="password" id="apiKey" placeholder="sk-...">
+      <label>模型</label>
+      <select id="modelSelect">
+        <option value="deepseek-v4-pro">deepseek-v4-pro</option>
+        <option value="deepseek-v4-flash">deepseek-v4-flash</option>
+        <option value="gpt-4o">gpt-4o (视觉)</option>
+        <option value="qwen-vl-plus">通义千问VL (视觉)</option>
+      </select>
+      <label>AI 名称</label>
+      <input type="text" id="aiNameInput" maxlength="20">
+      <label>人格描述</label>
+      <textarea id="personaInput" rows="2">你是一位温文尔雅的作家，善于倾听、整合对话。</textarea>
+      <label>朗读声音</label>
+      <select id="voiceSelect">
+        <option value="medusa">美杜莎</option>
+        <option value="female">温柔女声</option>
+        <option value="male">温柔男声</option>
+        <option value="lively">活泼少女</option>
+        <option value="uncle">沉稳大叔</option>
+        <option value="child">可爱童声</option>
+        <option value="system">系统语音…</option>
+      </select>
+      <div id="systemVoicePanel" style="display:none;">
+        <label>系统可用语音</label>
+        <div id="systemVoiceList" style="max-height:150px;overflow-y:auto;border:1px solid var(--border);border-radius:12px;padding:4px;"></div>
+        <small style="color:var(--text2);">已选：<span id="sysVoiceName">无</span></small>
+      </div>
+      <label>主题</label>
+      <select id="themeSelect">
+        <option value="light">白色</option>
+        <option value="dark">黑色</option>
+        <option value="sepia">暖黄</option>
+      </select>
+      <div class="btn-group">
+        <button class="btn-outline" id="btnCancel">取消</button>
+        <button class="btn" id="btnSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 开发者面板 -->
+  <div class="modal" id="devModal" style="display:none;">
+    <div class="modal-content">
+      <h3>🔐 开发者权限</h3>
+      <button id="btnDevReset" class="btn-outline" style="width:100%;margin-bottom:8px;">⚠️ 重置所有数据</button>
+      <button id="btnDevExport" class="btn-outline" style="width:100%;margin-bottom:8px;">📤 导出全部对话</button>
+      <input type="file" id="devImportFile" accept=".json" style="display:none;">
+      <button id="btnDevImport" class="btn-outline" style="width:100%;margin-bottom:8px;">📥 导入对话备份</button>
+      <button id="btnDevClose" class="btn-outline" style="width:100%;">关闭</button>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const STORE = {
+        convs: 'w_convs', active: 'w_active', settings: 'w_settings',
+        name: 'w_name', persona: 'w_persona', theme: 'w_theme', memory: 'w_memory'
+      };
+      let conversations = [], activeId = null, isGen = false, ctrl = null;
+      let settings = { 
+        apiUrl: 'https://api.deepseek.com/v1/chat/completions', 
+        apiKey: '', 
+        model: 'deepseek-v4-pro', 
+        voice: 'medusa', 
+        systemVoice: '' 
+      };
+      let aiName = '无名', persona = '你是一位温文尔雅的作家。', theme = 'light';
+      let memory = [], uploadedImgs = [];
+
+      const voiceProfiles = {
+        medusa: { pitch: 0.5, rate: 0.85 },
+        female: { pitch: 1.3, rate: 0.95 },
+        male:   { pitch: 0.8, rate: 0.9 },
+        lively: { pitch: 1.7, rate: 1.1 },
+        uncle:  { pitch: 0.6, rate: 0.8 },
+        child:  { pitch: 2.2, rate: 0.8 }
+      };
+
+      const $ = id => document.getElementById(id);
+      const sidebar = $('sidebar'), convList = $('convList');
+      const msgContainer = $('msgContainer'), emptyState = $('emptyState');
+      const userInput = $('userInput'), btnSend = $('btnSend');
+      const settingsModal = $('settingsModal'), devModal = $('devModal');
+      const imgPreview = $('imgPreview');
+
+      function init() {
+        loadData();
+        applyTheme();
+        updateNames();
+        renderConvList();
+        if(activeId && getConv(activeId)) switchConv(activeId, false);
+        else if(conversations.length > 0) switchConv(conversations[0].id, false);
+        else newConv(false);
+        bindEvents();
+        if(typeof marked !== 'undefined') marked.setOptions({ breaks: true, gfm: true });
+        if(window.speechSynthesis) {
+          speechSynthesis.getVoices();
+          speechSynthesis.onvoiceschanged = () => {
+            if($('systemVoicePanel')?.style.display === 'block') loadSystemVoices();
+          };
+        }
+      }
+
+      function loadData() {
+        try {
+          conversations = JSON.parse(localStorage.getItem(STORE.convs) || '[]');
+          activeId = localStorage.getItem(STORE.active);
+          settings = { ...settings, ...JSON.parse(localStorage.getItem(STORE.settings) || '{}') };
+          aiName = localStorage.getItem(STORE.name) || '无名';
+          persona = localStorage.getItem(STORE.persona) || persona;
+          theme = localStorage.getItem(STORE.theme) || 'light';
+          memory = JSON.parse(localStorage.getItem(STORE.memory) || '[]');
+        } catch(e) {}
+      }
+
+      function save() {
+        localStorage.setItem(STORE.convs, JSON.stringify(conversations));
+        localStorage.setItem(STORE.active, activeId || '');
+        localStorage.setItem(STORE.settings, JSON.stringify(settings));
+        localStorage.setItem(STORE.name, aiName);
+        localStorage.setItem(STORE.persona, persona);
+        localStorage.setItem(STORE.theme, theme);
+        localStorage.setItem(STORE.memory, JSON.stringify(memory));
+      }
+
+      function applyTheme() { document.body.className = theme === 'dark' ? 'dark' : (theme === 'sepia' ? 'sepia' : ''); }
+      function updateNames() { $('chatName').textContent = aiName; $('sideName').textContent = aiName; document.title = aiName + ' · 作家型AI'; }
+      function getConv(id) { return conversations.find(c => c.id === id); }
+      function newConv(switchTo = true) {
+        const c = { id: Date.now().toString(36)+Math.random().toString(36).substr(2,6), title:'新对话', messages:[], time:Date.now() };
+        conversations.unshift(c); save(); renderConvList();
+        if(switchTo) switchConv(c.id, true);
+      }
+      function deleteConv(id) {
+        conversations = conversations.filter(c => c.id !== id);
+        if(!conversations.length) conversations.push({ id:Date.now().toString(36), title:'新对话', messages:[], time:Date.now() });
+        if(activeId === id) activeId = conversations[0].id;
+        save(); renderConvList(); if(activeId) switchConv(activeId, false);
+      }
+      function switchConv(id, scroll) {
+        if(isGen && ctrl) { ctrl.abort(); isGen=false; updateSendBtn(); }
+        activeId = id; const conv = getConv(id); if(!conv) return;
+        renderMsgs(conv); save(); renderConvList();
+        if(scroll !== false) scrollBottom(); userInput.focus();
+        $('hint').textContent = memory.length ? `已学习${memory.length}条记忆` : '';
+      }
+      function renderConvList() {
+        convList.innerHTML = '';
+        conversations.forEach(c => {
+          const div = document.createElement('div');
+          div.className = 'conv-item' + (c.id===activeId?' active':'');
+          div.innerHTML = `<span>💬</span><span class="conv-title">${esc(c.title||'新对话')}</span><button class="del-btn" data-id="${c.id}">✕</button>`;
+          div.addEventListener('click', e => {
+            if(e.target.classList.contains('del-btn')) return;
+            switchConv(c.id, true); if(window.innerWidth<=768) sidebar.classList.remove('open');
+          });
+          div.querySelector('.del-btn').addEventListener('click', e => { e.stopPropagation(); if(confirm('删除对话？')) deleteConv(c.id); });
+          convList.appendChild(div);
+        });
+      }
+      function renderMsgs(conv) {
+        msgContainer.innerHTML = '';
+        if(!conv || !conv.messages.length) { emptyState.style.display='flex'; return; }
+        emptyState.style.display='none';
+        conv.messages.forEach((m,i) => appendMsg(m, i===conv.messages.length-1 && m.role==='assistant'));
+      }
+      function appendMsg(msg, last=false) {
+        const row = document.createElement('div');
+        row.className = 'msg-row ' + msg.role;
+        const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : '';
+        let html = msg.role==='assistant' ? md(msg.content) : esc(msg.content);
+        if(msg.images) msg.images.forEach(img => html = `<img src="${img}" alt=""/>` + html);
+        row.innerHTML = `<div class="msg-avatar">${msg.role==='user'?'👤':'✒️'}</div><div style="flex:1;"><div class="msg-bubble">${html}</div><div class="msg-meta"><span style="font-size:0.65rem;color:var(--text2);">${time}</span><button class="copy-btn">复制</button>${msg.role==='assistant'?'<button class="speak-btn">🔊</button>':''}</div></div>`;
+        row.querySelector('.copy-btn')?.addEventListener('click', () => { navigator.clipboard?.writeText(msg.content); alert('已复制'); });
+        row.querySelector('.speak-btn')?.addEventListener('click', () => speak(msg.content));
+        msgContainer.appendChild(row);
+        if(msg.role==='assistant') row.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+        return row;
+      }
+      function md(text) { return typeof marked!=='undefined' ? marked.parse(text) : esc(text).replace(/\n/g,'<br>'); }
+      function esc(str) { const d=document.createElement('div'); d.textContent=str; return d.innerHTML; }
+      function speak(text) {
+        if(!window.speechSynthesis) return;
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text.replace(/[#*`>\[\]()]/g,''));
+        u.lang = 'zh-CN';
+        const profile = voiceProfiles[settings.voice] || voiceProfiles.medusa;
+        u.pitch = profile.pitch; u.rate = profile.rate;
+        if(settings.voice==='system' && settings.systemVoice) {
+          const voices = speechSynthesis.getVoices();
+          const v = voices.find(v => v.voiceURI===settings.systemVoice);
+          if(v) u.voice = v;
+        }
+        speechSynthesis.speak(u);
+      }
+      function loadSystemVoices() {
+        const voices = speechSynthesis.getVoices();
+        const list = $('systemVoiceList'); if(!list) return;
+        list.innerHTML = '';
+        const zh = voices.filter(v => v.lang.includes('zh'));
+        if(!zh.length) { list.innerHTML = '<div style="padding:8px;color:var(--text2);">无中文语音</div>'; return; }
+        zh.forEach(v => {
+          const div = document.createElement('div');
+          div.style.padding='8px 12px'; div.style.cursor='pointer'; div.style.borderBottom='1px solid var(--border)';
+          div.textContent = v.name + ' (' + v.lang + ')';
+          if(settings.systemVoice===v.voiceURI) div.style.background='var(--accent)';
+          div.addEventListener('click', () => {
+            settings.systemVoice = v.voiceURI; $('sysVoiceName').textContent = v.name;
+            [...list.children].forEach(c => c.style.background=''); div.style.background='var(--accent)';
+            const test = new SpeechSynthesisUtterance('系统语音测试'); test.voice=v; speechSynthesis.speak(test);
+          });
+          list.appendChild(div);
+        });
+        if(settings.systemVoice) { const cur = zh.find(v => v.voiceURI===settings.systemVoice); if(cur) $('sysVoiceName').textContent = cur.name; }
+      }
+      async function send() {
+        if(isGen) return;
+        const text = userInput.value.trim();
+        if(!text && uploadedImgs.length===0) return;
+        if(!settings.apiKey) { alert('请先在设置中填入API密钥'); return; }
+        const conv = getConv(activeId); if(!conv) return;
+        emptyState.style.display='none';
+        const vision = settings.model.includes('gpt-4') || settings.model.includes('qwen-vl');
+        const userMsg = { role:'user', content: text||'(图片)', timestamp:Date.now(), images: vision ? uploadedImgs.map(i=>i.base64) : [] };
+        conv.messages.push(userMsg); save();
+        appendMsg(userMsg); if(text) extractMemory(text);
+        if(conv.messages.length===1) updateTitle(conv.id);
+        scrollBottom(); userInput.value=''; userInput.style.height='auto';
+        uploadedImgs=[]; imgPreview.innerHTML=''; updateSendBtn();
+
+        const asstMsg = { role:'assistant', content:'', timestamp:Date.now() };
+        conv.messages.push(asstMsg);
+        const row = appendMsg(asstMsg, true);
+        row.querySelector('.msg-bubble').innerHTML='思考中...';
+        scrollBottom();
+        isGen=true; ctrl=new AbortController(); updateSendBtn();
+
+        const apiMsgs = conv.messages.slice(0,-1).map(m => {
+          if(vision && m.images?.length) {
+            const parts = m.images.map(img => ({type:'image_url', image_url:{url:img}}));
+            parts.push({type:'text', text:m.content});
+            return {role:m.role, content:parts};
+          }
+          return {role:m.role, content:m.content};
+        });
+        apiMsgs.unshift({role:'system', content: persona + (memory.length ? '\n用户记忆：'+memory.map(m=>'- '+m.content).join('\n') : '') });
+
+        let full='';
+        try {
+          const res = await fetch(settings.apiUrl, {
+            method:'POST',
+            headers:{'Content-Type':'application/json','Authorization':'Bearer '+settings.apiKey},
+            body:JSON.stringify({model:settings.model, messages:apiMsgs, stream:true}),
+            signal:ctrl.signal
+          });
+          if(!res.ok) { const errText = await res.text(); throw new Error(`请求失败 ${res.status}: ${errText.substring(0,200)}`); }
+          const reader = res.body.getReader(), dec = new TextDecoder();
+          let buf='';
+          while(true) {
+            const {done, value} = await reader.read();
+            if(done) break;
+            buf += dec.decode(value, {stream:true});
+            const lines = buf.split('\n');
+            buf = lines.pop() || '';
+            for(const line of lines) {
+              const s = line.trim();
+              if(!s.startsWith('data: ')) continue;
+              const data = s.slice(6);
+              if(data==='[DONE]') continue;
+              try { const j=JSON.parse(data); const d=j.choices?.[0]?.delta?.content; if(d) { full+=d; updateLast(full); scrollBottom(); } } catch(e) {}
+            }
+          }
+          updateLast(full || '（无回复）');
+        } catch(e) {
+          if(e.name==='AbortError') updateLast(full+'\n\n(已中断)');
+          else updateLast('❌ 错误：'+e.message);
+        } finally { isGen=false; ctrl=null; updateSendBtn(); save(); }
+      }
+      function updateLast(content) {
+        const conv = getConv(activeId); if(!conv) return;
+        const last = conv.messages[conv.messages.length-1];
+        if(last?.role==='assistant') { last.content=content; last.timestamp=Date.now(); }
+        const rows = msgContainer.querySelectorAll('.msg-row.assistant');
+        const row = rows[rows.length-1];
+        if(row) { row.querySelector('.msg-bubble').innerHTML = md(content); row.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b)); }
+      }
+      function extractMemory(text) {
+        const triggers = ['我叫','我是','我喜欢','我讨厌','我认为','我觉得','我的'];
+        for(const t of triggers) {
+          if(text.includes(t)) {
+            const s = text.split(/[。！？\n]/).find(p => p.includes(t));
+            if(s && s.length<80 && !memory.some(m => m.content===s)) {
+              memory.push({content:s.trim(), time:Date.now()});
+              if(memory.length>20) memory.shift();
+              save(); $('hint').textContent = `已学习${memory.length}条记忆`;
+            }
+          }
+        }
+      }
+      function updateTitle(id) {
+        const c = getConv(id); if(!c) return;
+        const first = c.messages.find(m => m.role==='user');
+        if(first) c.title = first.content.substring(0,20)+(first.content.length>20?'…':'');
+        save(); renderConvList();
+      }
+      function updateSendBtn() {
+        if(isGen) { btnSend.innerHTML='■'; btnSend.disabled=false; }
+        else { btnSend.innerHTML='➤'; btnSend.disabled = !userInput.value.trim() && uploadedImgs.length===0; }
+      }
+      function scrollBottom() { msgContainer.scrollTop = msgContainer.scrollHeight; }
+      function handleImg(e) {
+        const files = Array.from(e.target.files);
+        files.forEach(f => {
+          const reader = new FileReader();
+          reader.onload = ev => {
+            uploadedImgs.push({base64:ev.target.result});
+            const img = document.createElement('img'); img.src=ev.target.result;
+            imgPreview.appendChild(img); updateSendBtn();
+          };
+          reader.readAsDataURL(f);
+        });
+        e.target.value='';
+      }
+
+      function bindEvents() {
+        $('menuBtn').addEventListener('click', () => sidebar.classList.toggle('open'));
+        $('btnSettings').addEventListener('click', () => {
+          $('apiUrl').value = settings.apiUrl; $('apiKey').value = settings.apiKey;
+          $('modelSelect').value = settings.model; $('aiNameInput').value = aiName;
+          $('personaInput').value = persona; $('voiceSelect').value = settings.voice;
+          $('themeSelect').value = theme;
+          $('systemVoicePanel').style.display = settings.voice==='system' ? 'block' : 'none';
+          if(settings.voice==='system') loadSystemVoices();
+          settingsModal.style.display='flex';
+        });
+        $('voiceSelect').addEventListener('change', e => {
+          $('systemVoicePanel').style.display = e.target.value==='system' ? 'block' : 'none';
+          if(e.target.value==='system') loadSystemVoices();
+        });
+        $('btnCancel').addEventListener('click', () => settingsModal.style.display='none');
+        $('btnSave').addEventListener('click', () => {
+          settings.apiUrl = $('apiUrl').value.trim(); settings.apiKey = $('apiKey').value.trim();
+          settings.model = $('modelSelect').value; aiName = $('aiNameInput').value.trim() || '无名';
+          persona = $('personaInput').value.trim(); settings.voice = $('voiceSelect').value;
+          theme = $('themeSelect').value;
+          if(settings.voice!=='system') settings.systemVoice='';
+          save(); applyTheme(); updateNames(); settingsModal.style.display='none';
+        });
+        settingsModal.addEventListener('click', e => { if(e.target===settingsModal) settingsModal.style.display='none'; });
+        btnSend.addEventListener('click', () => { if(isGen) ctrl.abort(); else send(); });
+        userInput.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+        userInput.addEventListener('input', updateSendBtn);
+        $('imgUpload').addEventListener('change', handleImg);
+        $('btnExport').addEventListener('click', () => {
+          const conv = getConv(activeId);
+          if(!conv || !conv.messages.length) return alert('无内容');
+          let book = `《与${aiName}的对话》\n\n`;
+          conv.messages.forEach(m => book += `【${m.role==='user'?'读者':aiName}】 ${m.content}\n\n`);
+          const blob = new Blob([book], {type:'text/plain'});
+          const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+          a.download=`${aiName}_对话书.txt`; a.click();
+        });
+        let pressTimer;
+        const settingsBtn = $('btnSettings');
+        settingsBtn.addEventListener('mousedown', () => { pressTimer = setTimeout(() => devModal.style.display='flex', 2000); });
+        settingsBtn.addEventListener('mouseup', () => clearTimeout(pressTimer));
+        settingsBtn.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+        settingsBtn.addEventListener('touchstart', () => { pressTimer = setTimeout(() => devModal.style.display='flex', 2000); });
+        settingsBtn.addEventListener('touchend', () => clearTimeout(pressTimer));
+        $('btnDevClose').addEventListener('click', () => devModal.style.display='none');
+        $('btnDevReset').addEventListener('click', () => { if(confirm('⚠️ 确定删除所有数据？')) { localStorage.clear(); location.reload(); } });
+        $('btnDevExport').addEventListener('click', () => {
+          const data = { conversations, settings, aiName, persona, theme, memory };
+          const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
+          const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+          a.download='ai_backup.json'; a.click();
+        });
+        $('btnDevImport').addEventListener('click', () => $('devImportFile').click());
+        $('devImportFile').addEventListener('change', e => {
+          const file = e.target.files[0]; if(!file) return;
+          const reader = new FileReader();
+          reader.onload = ev => {
+            try {
+              const data = JSON.parse(ev.target.result);
+              if(data.conversations) conversations = data.conversations;
+              if(data.settings) settings = { ...settings, ...data.settings };
+              if(data.aiName) aiName = data.aiName; if(data.persona) persona = data.persona;
+              if(data.theme) theme = data.theme; if(data.memory) memory = data.memory;
+              save(); applyTheme(); updateNames(); renderConvList();
+              if(conversations.length>0) switchConv(conversations[0].id, false);
+              alert('导入成功');
+            } catch(ex) { alert('文件格式错误'); }
+          };
+          reader.readAsText(file); e.target.value='';
+        });
+        document.addEventListener('click', e => {
+          if(window.innerWidth<=768 && !sidebar.contains(e.target) && e.target!==$('menuBtn')) sidebar.classList.remove('open');
+        });
+      }
+      init();
+    })();
+  </script>
+</body>
+</html>
